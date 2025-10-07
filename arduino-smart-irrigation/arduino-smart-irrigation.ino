@@ -1,24 +1,30 @@
 #include <ArduinoBLE.h>
 
 const int SOIL_PIN = A0;
+const int PUMP_PIN = LED_BUILTIN;  // 物理ポンプが無い間はLEDで代用
 
-// 任意の128-bit UUID（Arduino公式例と同系）
 BLEService soilService("19B10010-E8F2-537E-4F6C-D104768A1214");
-// 0–1023の生値を送る（16bit符号なし）/ 読み取り + Notify
+
+// 土壌値 Notify (16bit)
 BLEUnsignedShortCharacteristic soilChar(
   "19B10011-E8F2-537E-4F6C-D104768A1214",
   BLERead | BLENotify
+);
+
+// ポンプ制御 Write (1 byte: 0=OFF, 1=ON)
+BLEByteCharacteristic pumpChar(
+  "19B10012-E8F2-537E-4F6C-D104768A1214",
+  BLEWrite | BLEWriteWithoutResponse
 );
 
 void setup() {
   Serial.begin(115200);
   while (!Serial) {}
 
-  // ⚠️配線注意：Nano 33 IoTは3.3Vロジック
-  // センサーのVCCは3.3V給電推奨（A0に5Vを入れない）
-
   pinMode(SOIL_PIN, INPUT);
-  analogReadResolution(10); // 0-1023
+  pinMode(PUMP_PIN, OUTPUT);
+  digitalWrite(PUMP_PIN, LOW);
+  analogReadResolution(10);
 
   if (!BLE.begin()) {
     Serial.println("BLE init failed!");
@@ -28,30 +34,39 @@ void setup() {
   BLE.setLocalName("SoilNode");
   BLE.setAdvertisedService(soilService);
   soilService.addCharacteristic(soilChar);
+  soilService.addCharacteristic(pumpChar);
   BLE.addService(soilService);
 
-  soilChar.writeValue((unsigned short)0); // 初期値
-  BLE.advertise();
+  soilChar.writeValue((unsigned short)0);
+  pumpChar.writeValue((byte)0);
 
+  BLE.advertise();
   Serial.println("BLE advertising started (SoilNode)");
 }
 
-void loop() {
-  // 中央（スマホ/ラズパイ）が接続するのを待つ
-  BLEDevice central = BLE.central();
+unsigned long lastMs = 0;
 
+void loop() {
+  BLEDevice central = BLE.central();
   if (central) {
-    Serial.print("Connected: ");
-    Serial.println(central.address());
+    Serial.print("Connected: "); Serial.println(central.address());
 
     while (central.connected()) {
-      unsigned short raw = (unsigned short)analogRead(SOIL_PIN);
-      soilChar.writeValue(raw);          // これでNotifyが飛ぶ
-      Serial.print("Soil(raw): ");
-      Serial.println(raw);
-      delay(1000);                       // 1秒周期
-    }
+      // 下りコマンドの反映
+      if (pumpChar.written()) {
+        byte cmd = 0;
+        pumpChar.readValue(cmd);
+        if (cmd == 1) { digitalWrite(PUMP_PIN, HIGH); Serial.println("PUMP: ON"); }
+        else          { digitalWrite(PUMP_PIN, LOW);  Serial.println("PUMP: OFF"); }
+      }
 
+      // 1秒ごとに土壌値Notify
+      if (millis() - lastMs >= 1000) {
+        lastMs = millis();
+        unsigned short raw = (unsigned short)analogRead(SOIL_PIN);
+        soilChar.writeValue(raw);
+      }
+    }
     Serial.println("Disconnected");
   }
 }
