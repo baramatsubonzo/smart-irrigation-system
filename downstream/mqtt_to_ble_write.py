@@ -28,9 +28,12 @@ def on_mqtt_message(client, userdata, msg):
         return
     if ble_client and ble_client.is_connected:
         # 非同期ループへ投げる
-        asyncio.get_event_loop().create_task(
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(
             ble_client.write_gatt_char(PUMP_CHAR, bytearray([val]), response=False)
         )
+        loop.close()
         print("BLE write:", val)
 
 async def main():
