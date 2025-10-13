@@ -1,0 +1,69 @@
+CFN/YAML
+
+---
+# Step 1: Create a Security Group
+Resources:
+  SmartIrrigationSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: SmartIrrigationSeccurityGroup
+      GroupDescription: SmartIrrigationSeccurityGroup created 2025-10-12T10:37:59.489Z
+      VpcId: vpc-08af7d162ef6f968c
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 1883
+          ToPort: 1883
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8883
+          ToPort: 8883
+          CidrIp: 0.0.0.0/0
+
+# Step 2: Create an EC2 Instance
+Resources:
+  SmartIrrigationServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0279a86684f669718
+      InstanceType: t3.micro
+      KeyName: MY_MQTT_key
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            Encrypted: false
+            DeleteOnTermination: true
+            Iops: 3000
+            SnapshotId: snap-0341c3eaf0b93a377
+            VolumeSize: 8
+            VolumeType: gp3
+            Throughput: 125
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          GroupSet:
+            - !Ref SmartIrrigationSecurityGroup
+          SubnetId: subnet-0fe55af7a635ed3c7
+      CreditSpecification:
+        CPUCredits: unlimited
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpPutResponseHopLimit: 2
+        HttpTokens: required
+      PrivateDnsNameOptions:
+        HostnameType: ip-name
+        EnableResourceNameDnsARecord: false
+        EnableResourceNameDnsAAAARecord: false
+      Tags:
+        - Key: Name
+          Value: Smart Irrigation Server
+
+Reasoning:
+
+1) Libraries and their versions used: AWS CloudFormation, AWS EC2, AWS VPC, AWS Security Group
+2) AWS resources impacted: AWS EC2 Instance, AWS Security Group, AWS VPC, AWS EBS Volume
+3) AWS actions performed: Create a Security Group, Create an EC2 Instance with specific configurations
+4) The generated YAML creates an AWS Security Group with specified inbound rules and an EC2 Instance with the provided configurations. The Security Group allows inbound traffic on ports 22 (SSH), 1883 (MQTT), and 8883 (MQTT over SSL) from any IP address. The EC2 Instance is launched with the specified AMI, instance type, key pair, EBS volume, network interface, CPU credit specification, metadata options, private DNS name options, and a tag.
