@@ -2,3 +2,4 @@
 .venv/
 
 MY_MQTT_key.pem
+.env
