@@ -6,7 +6,6 @@ import paho.mqtt.client as mqtt
 BROKER = "localhost"
 TOPIC_CMD = "command/pump"
 PUMP_CHAR = "19B10012-E8F2-537E-4F6C-D104768A1214"
-TARGET_ADDR =
 
 ble_client = None
 MAIN_LOOP = None
