@@ -11,8 +11,8 @@ MQTT_PORT   = int(os.getenv("MQTT_PORT", "1883"))
 SOIL_TOPIC  = "sensors/soil/#"         # ← デバイス別に受ける
 PUMP_CMD_TOPIC = "control/pump/#"
 
-SOIL_THRESHOLD = float(os.getenv("SOIL_THRESHOLD", "5.0"))
-ALERT_COOLDOWN_SEC = int(os.getenv("ALERT_COOLDOWN_SEC", "1800"))  # 30分
+SOIL_THRESHOLD = float(os.getenv("SOIL_THRESHOLD", "1.0"))
+ALERT_COOLDOWN_SEC = int(os.getenv("ALERT_COOLDOWN_SEC", "1800"))  # 30分は再通知しない
 
 # --- メール設定 ---
 SMTP_SERVER = os.getenv("SMTP_SERVER", "")
@@ -29,49 +29,47 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe(PUMP_CMD_TOPIC, qos=1)
 
 def on_message(client, userdata, msg):
+    """MQTTでメッセージを受信したときに呼ばれる関数"""
     topic = msg.topic
-    payload = msg.payload.decode(errors="ignore")
-    print(f"[MQTT] {topic} {payload}")
+    try:
+        payload = json.loads(msg.payload.decode())
+        print(f"[MQTT] Received: {topic} -> {payload}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        print(f"[WARN] Failed to decode message from {topic}")
+        return
 
-    # sensors/soil/<deviceId> を想定
-    if topic.startswith("sensors/soil/"):
-        try:
-            data = json.loads(payload)
-        except json.JSONDecodeError:
-            print("[WARN] JSON decode failed")
-            return
+    # データから必要な値を取得
+    moisture = payload.get("soil_raw") # ラズパイからはrawデータが来ると想定
+    deviceId = payload.get("device")
 
-        # 統一キー: moisture（%）
-        moisture = data.get("moisture")
-        deviceId = data.get("deviceId") or topic.split("/", 2)[-1]  # topicから補完
+    if not all([isinstance(moisture, (int, float)), deviceId]):
+        print("[WARN] Invalid payload format. 'soil_raw' and 'device' are required.")
+        return
 
-        if isinstance(moisture, (int, float)):
-            # クールダウン判定
-            now = int(time.time())
-            last = last_alert_at.get(deviceId, 0)
-            if moisture < SOIL_THRESHOLD and (now - last) >= ALERT_COOLDOWN_SEC:
-                print(f"[ALERT] {deviceId} moisture={moisture}% < {SOIL_THRESHOLD}% -> notify")
-                ok = send_notification(deviceId, moisture)
-                if ok:
-                    last_alert_at[deviceId] = now
+    # --- ② 評価ロジック ---
+    now = time.time()
+    last_alert_time = last_alert_at.get(deviceId, 0)
+
+    if moisture < SOIL_THRESHOLD:
+        # クールダウン時間を過ぎていれば通知
+        if (now - last_alert_time) >= ALERT_COOLDOWN_SEC:
+            print(f"[ALERT] {deviceId} is too dry ({moisture}). Sending notification...")
+            # --- ③ 通知ロジック ---
+            success = send_notification(deviceId, moisture)
+            if success:
+                # 通知が成功したら、最終通知時刻を更新
+                last_alert_at[deviceId] = now
         else:
-            print("[WARN] 'moisture' missing or not a number")
-
-    elif topic.startswith("control/pump/"):
-        # ここではログだけ。将来: 検証→ACK publish
-        print(f"[CMD] manual command received: {payload}")
+            print(f"[INFO] {deviceId} is dry, but in cooldown period. Skipping alert.")
 
 def send_notification(deviceId, moisture_level):
-    if not (SMTP_SERVER and EMAIL_ADDRESS and EMAIL_PASSWORD and TO_EMAIL_ADDRESS):
-        print("[ERROR] SMTP env not set. Skip email.")
-        return False
-
-    subject = f"Irrigation Alert [{deviceId}]: Soil too dry"
+    """メールで通知を送信する関数"""
+    subject = f"スマート灌漑アラート: [{deviceId}] の土壌が乾燥しています"
     body = (
-        f"Device: {deviceId}\n"
-        f"Moisture: {moisture_level}% (threshold {SOIL_THRESHOLD}%)\n"
-        f"Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}\n"
-        "Please consider watering the plants."
+        f"デバイスID: {deviceId}\n"
+        f"現在の土壌水分: {moisture_level} (しきい値: {SOIL_THRESHOLD})\n"
+        f"時刻: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        "水やりを検討してください。"
     )
 
     msg = MIMEText(body)
@@ -80,18 +78,24 @@ def send_notification(deviceId, moisture_level):
     msg['To'] = TO_EMAIL_ADDRESS
 
     try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10) as server:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
             server.starttls()
             server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
             server.send_message(msg)
-        print("[EMAIL] sent")
+        print(f"[EMAIL] Notification for {deviceId} sent successfully.")
         return True
     except Exception as e:
-        print(f"[EMAIL] failed: {e}")
+        print(f"[ERROR] Failed to send email: {e}")
         return False
 
-client = mqtt.Client(client_id=f"svc-notify-{int(time.time())}", clean_session=True)
-client.on_connect = on_connect
-client.on_message = on_message
-client.connect(MQTT_BROKER, MQTT_PORT, 60)
-client.loop_forever(retry_first_connection=True)
+# --- メイン処理 ---
+if __name__ == "__main__":
+    client = mqtt.Client(client_id=f"tier3-notification-service-{os.getpid()}", clean_session=True)
+    client.on_connect = on_connect
+    client.on_message = on_message
+
+    print("[INFO] Connecting to MQTT broker...")
+    client.connect(MQTT_BROKER, MQTT_PORT, 60)
+
+    # 無限ループでメッセージを待ち受ける
+    client.loop_forever()
