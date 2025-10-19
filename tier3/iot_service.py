@@ -4,8 +4,13 @@ import json
 import smtplib
 import paho.mqtt.client as mqtt
 from email.mime.text import MIMEText
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- 設定（環境変数で注入） ---
+load_dotenv()
+
 MQTT_BROKER = os.getenv("MQTT_BROKER", "localhost")
 MQTT_PORT   = int(os.getenv("MQTT_PORT", "1883"))
 SOIL_TOPIC  = "sensors/soil/#"         # ← デバイス別に受ける

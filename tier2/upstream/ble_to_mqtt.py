@@ -5,7 +5,7 @@ import paho.mqtt.client as mqtt
 SERVICE_UUID = "19B10010-E8F2-537E-4F6C-D104768A1214"
 CHAR_UUID    = "19B10011-E8F2-537E-4F6C-D104768A1214"
 
-BROKER   = "localhost"      # ← Mac上のMosquittoを指定
+BROKER   = "3.107.51.150"      # ← Mac上のMosquittoを指定
 PORT     = 1883
 TOPIC    = "sensors/soil"
 DEVICE_ID= "soil-node-01"
