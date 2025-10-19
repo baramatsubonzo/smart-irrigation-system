@@ -45,6 +45,8 @@ void setup() {
 
   BLE.advertise();
   Serial.println("BLE advertising started (SoilNode)");
+  Serial.print("Device MAC: ");
+  Serial.println(BLE.address());
 }
 
 unsigned long lastMs = 0;

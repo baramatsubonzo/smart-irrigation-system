@@ -3,6 +3,8 @@ import asyncio, json
 from bleak import BleakClient, BleakScanner
 import paho.mqtt.client as mqtt
 
+DEVICE_ADDRESS = "b0:b2:1c:49:bf:62"
+
 BROKER = "localhost"
 TOPIC_CMD = "command/pump"
 PUMP_CHAR = "19B10012-E8F2-537E-4F6C-D104768A1214"
@@ -45,14 +47,14 @@ def on_mqtt_message(client: mqtt.Client, userdata, message: mqtt.MQTTMessage):
 async def main():
     global ble_client, MAIN_LOOP
     MAIN_LOOP = asyncio.get_running_loop()
-    print("Scanning BLE...")
-    dev = await BleakScanner.find_device_by_name("SoilNode")
-    if not dev:
-        print("Device not found"); return
+    print(f"Attempting to connect to device at {DEVICE_ADDRESS}...")
 
-    async with BleakClient(dev) as client:
+    async with BleakClient(DEVICE_ADDRESS) as client:
+        if not client.is_connected:
+            print("Connection failed")
+            return
         ble_client = client
-        print("Connected to", getattr(dev, "name", str(dev)))
+        print("Connected.")
 
         # MQTT接続＆購読
         mqc = mqtt.Client()
