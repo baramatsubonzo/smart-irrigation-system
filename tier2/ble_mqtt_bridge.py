@@ -163,7 +163,9 @@ async def ble_loop(stop_event: asyncio.Event):
                     if not disconnected_future.done():
                         disconnected_future.set_result(True)
                 # Set a callback function that will be called when the BLE device disconnects.
-                client.set_disconnected_callback(handle_disconnect)
+                client = BleakClient(address_or_ble_device, disconnected_callback=handle_disconnect)
+                await client.connect()
+
                 print("[BLE] connected:", client.address)
 
                 print(f"[BLE] start notify {SOIL_CHAR_UUID}")
