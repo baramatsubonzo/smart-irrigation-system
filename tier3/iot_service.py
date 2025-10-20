@@ -31,7 +31,7 @@ TO_EMAIL_ADDRESS = os.getenv("TO_EMAIL_ADDRESS", "")
 # Dictionary to track last alert times for each device
 last_alert_at = {}
 
-# MQTT callback functions.
+# Callback function triggered when the client successfully connects to the MQTT broker
 # 'client' is the MQTT client instance.
 # 'userdata' is user-defined data for sharing state between callvackes (None if not set).
 # 'flags' is a dictionary with response flags from the broker.
@@ -42,7 +42,7 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe(SOIL_TOPIC, qos=1)
     client.subscribe(PUMP_CMD_TOPIC, qos=1)
 
-# Callback when a PUBLISH message is received from the server.
+# Callback function triggered when an MQTT message is received
 # 'client' is the MQTT client instance.
 # 'userdata' is user-defined data for sharing state between callvackes (None if not set).
 # 'msg' is an instance of MQTTMessage, which has topic, payload, qos, retain attributes.
