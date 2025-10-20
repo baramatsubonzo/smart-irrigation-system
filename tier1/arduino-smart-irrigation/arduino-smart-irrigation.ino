@@ -15,11 +15,66 @@ BLEUnsignedShortCharacteristic soilChar(
 // Write (1 byte: 0=OFF, 1=ON) Control Pump
 BLEByteCharacteristic pumpChar(
   "19B10012-E8F2-537E-4F6C-D104768A1214",
-  BLEWrite | BLEWriteWithoutResponse
+  BLERead | BLEWrite | BLEWriteWithoutResponse
 );
 
+// Configurable intervals
+const unsigned long SOIL_NOTIFY_INTERVAL_MS = 1000;
+const unsigned long PUMP_AUTO_OFF_MS        = 5000;
+
+// State variables
+unsigned long lastSoilNotifyMs = 0;
 unsigned long pumpStartTime = 0;
 bool pumpIsOn = false;
+
+// Downstream: Handle pump control commands from BLE central
+void handleDownstreamPumpCommand() {
+  if (!pumpChar.written()) return;
+
+  byte cmd = 0;
+  pumpChar.readValue(cmd); // 0=OFF, 1=ON
+  if (cmd == 1 && !pumpIsOn) {
+    digitalWrite(PUMP_PIN, HIGH);
+    pumpIsOn = true;
+    pumpStartTime = millis();
+    pumpChar.writeValue((byte)1);
+    Serial.println("PUMP: ON (for 5 seconds)");
+  }
+  else if (cmd == 0 && pumpIsOn){
+    digitalWrite(PUMP_PIN, LOW);
+    pumpIsOn = false;
+    pumpChar.writeValue((byte)0);
+    Serial.println("PUMP: OFF (manual operation)");
+  }
+}
+
+void handleAutoPumpOff() {
+  // Automatically turn OFF the pump after 5 seconds to save power and prevent motor damage
+  if (pumpIsOn && (millis() - pumpStartTime >= PUMP_AUTO_OFF_MS)) {
+    digitalWrite(PUMP_PIN, LOW);
+    pumpIsOn = false;
+    pumpChar.writeValue((byte)0);
+    Serial.println("PUMP: OFF (auto timer)");
+  }
+}
+
+void handleUpstreamSoilNotify() {
+  // Notify soil moisture level every second
+  if (millis() - lastSoilNotifyMs >= SOIL_NOTIFY_INTERVAL_MS) {
+    lastSoilNotifyMs = millis();
+    unsigned short raw = (unsigned short)analogRead(SOIL_PIN);
+    soilChar.writeValue(raw);
+  }
+}
+
+void handleDisconnectSafety() {
+  // Ensure the pump is turned off when the BLE central disconnects
+  if(pumpIsOn) {
+    digitalWrite(PUMP_PIN, LOW);
+    pumpIsOn = false;
+    Serial.println("PUMP: OFF (disconnected)");
+  }
+}
 
 void setup() {
   // Initialize serial communication for debugging (115200 baud)
@@ -54,54 +109,20 @@ void setup() {
   Serial.print("Device MAC: ");
   Serial.println(BLE.address());
 }
-// Store the last time (in milliseconds) when soil data was notified
-unsigned long lastMs = 0;
 
 void loop() {
   BLEDevice central = BLE.central();
-  if (central) {
-    Serial.print("Connected: "); Serial.println(central.address());
+  if (!central) return;
 
-    while (central.connected()) {
-      //　Handle pump control commands
-      if (pumpChar.written()) {
-        byte cmd = 0;
-        pumpChar.readValue(cmd);
-        // Turn ON the pump if the command is 1 and it's currently OFF
-        if (cmd == 1 && !pumpIsOn) {
-          digitalWrite(PUMP_PIN, HIGH);
-          pumpIsOn = true;
-          pumpStartTime = millis();
-          Serial.println("PUMP: ON (for 5 seconds)");
-        }
-        else if (cmd == 0 && pumpIsOn){
-          digitalWrite(PUMP_PIN, LOW);
-          pumpIsOn = false;
-          Serial.println("PUMP: OFF (manual operation)");
-        }
-      }
+  Serial.print("Connected: ");
+  Serial.println(central.address());
 
-      // Automatically turn OFF the pump after 5 seconds to save power and prevent motor damage
-      if (pumpIsOn && (millis() - pumpStartTime >= 5000)) {
-        digitalWrite(PUMP_PIN, LOW);
-        pumpIsOn = false;
-        pumpChar.writeValue((byte)0);
-        Serial.println("PUMP: OFF (auto timer)");
-      }
-
-      // Notify soil moisture level every second
-      if (millis() - lastMs >= 1000) {
-        lastMs = millis();
-        unsigned short raw = (unsigned short)analogRead(SOIL_PIN);
-        soilChar.writeValue(raw);
-      }
-    }
-    Serial.println("Disconnected");
-
-    if(pumpIsOn) {
-      digitalWrite(PUMP_PIN, LOW);
-      pumpIsOn = false;
-      Serial.println("PUMP: OFF (disconnected)");
-    }
+  while (central.connected()) {
+    handleDownstreamPumpCommand();
+    handleAutoPumpOff();
+    handleUpstreamSoilNotify();
   }
+
+  Serial.println("Disconnected");
+  handleDisconnectSafety();
 }
