@@ -79,5 +79,34 @@ To manually trigger the pump for 5 seconds, publish a message to the MQTT broker
 mosquitto_pub -h YOUR_EC2_PUBLIC_IP -t "command/pump" -m "1"
 ```
 
-## 5. License
-This project is developed for academic purposes as part of QUT IFN649 coursework.
+## 5. Physical Circuit Design
+This section details the wiring for the Tier 1 device, which consists of the Arduino, a water pump, and the control circuit.
+Components
+- MCU: Arduino Nano 33 IoT
+- Actuator: DC Water Pump
+- Power Source: External Battery Pack
+- Switch: NPN Transistor (2N2222A)
+- Protection: Diode (1N5819)
+- Current Limiter: 270Ω Resistor
+### Wiring Connections
+**Transistor (2N2222A)**
+The transistor acts as an electronic switch, allowing the Arduino's small signal to control the large current needed by the pump.
+- **Pin 1 (Left Leg - Emitter)**: Connects to **Common GND**.
+- **Pin 2 (Middle Leg - Base)**: Connects to the **270Ω Resistor**.
+- **Pin 3 (Right Leg - Collector)**: Connects to the** Motor's Negative (-)** wire.
+Arduino Nano 33 IoT
+- **Pin `D8`**: Connects to the other end of the **270Ω Resistor**.
+- **Pin `GND`**: Connects to **Common GND**.
+
+**Motor & Diode**
+- **Motor Positive (+) Wire**: Connects to the **Battery's Positive (+)** terminal.
+- **Motor Negative (-) Wire**: Connects to the **Transistor's Collector**(right leg).
+- **Diode (1N5819)**: This is essential for protecting the transistor from voltage spikes when the motor turns off. **Connect it in parallel with the motor**.
+    - **IMPORTANT**: The **silver stripe** on the diode must face the **motor's positive (+)** side.
+
+**Common GND**<br>
+
+For the circuit to function correctly, the following three points **must be connected together** in the same row on the breadboard:<br>
+- **Arduino's `GND` Pin**
+- **Battery's Negative (-)** Terminal
+- **Transistor's Emitter** (left leg)
