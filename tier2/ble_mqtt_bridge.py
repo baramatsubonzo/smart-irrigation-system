@@ -1,34 +1,43 @@
-#!/usr/bin/env python3
 import asyncio, json, time, signal
-from typing import Optional
 from bleak import BleakClient, BleakScanner
+# add type hints for readability
+from typing import Optional
 import paho.mqtt.client as mqtt
+from dotenv import load_dotenv
+import os
 
-# ==== 設定 ====
+load_dotenv()
+# Settings
 DEVICE_NAME    = "SoilNode"
-DEVICE_ADDRESS = ""
+DEVICE_ID      = os.getenv("DEVICE_ID", "default-node")
+DEVICE_ADDRESS = os.getenv("DEVICE_ADDRESS", "")
 SOIL_CHAR_UUID = "19B10011-E8F2-537E-4F6C-D104768A1214"
 PUMP_CHAR_UUID = "19B10012-E8F2-537E-4F6C-D104768A1214"
-DEVICE_ID      = "soil-node-01"
-
-BROKER_ADDRESS = ""
-PORT           = 1883
+# MQTT Settings
+BROKER_ADDRESS = os.getenv("BROKER_ADDRESS", "localhost")
+PORT           = int(os.getenv("PORT", 1883))
 UP_TOPIC       = "sensors/soil"
 DOWN_TOPIC     = "command/pump"
 
-# ==== グローバル ====
+# Types of global variables
 MAIN_LOOP: asyncio.AbstractEventLoop
 BLE_CLIENT: Optional[BleakClient] = None
 MQTTC: mqtt.Client
 
 # ---- Downstream: payload→1/0 ----
+# Convert payload strings or JSON from Tier 3 into 1 (on) or 0 (off).
 def parse_onoff(s: str):
+    # If string from Tier 3 is "1","0","true","false","on","off"
     p = s.strip().lower()
-    if p in ("1","true","on"):  return 1
-    if p in ("0","false","off"): return 0
+    if p in ("1","true","on"):
+        return 1
+    if p in ("0","false","off"):
+        return 0
     try:
-        j = json.loads(s)
-        if isinstance(j, dict) and "on" in j: return 1 if j["on"] else 0
+        # If JSON from Tier 3 is {"on":true/false}.
+        data = json.loads(s)
+        if isinstance(data, dict) and "on" in data:
+            return 1 if data["on"] else 0
     except Exception: pass
     return None
 
