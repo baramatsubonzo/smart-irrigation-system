@@ -9,13 +9,13 @@ import os
 load_dotenv()
 # Settings
 DEVICE_NAME    = "SoilNode"
-DEVICE_ID      = os.getenv("DEVICE_ID", "default-node")
-DEVICE_ADDRESS = os.getenv("DEVICE_ADDRESS", "")
+DEVICE_ID      = "soil-node-01"
+DEVICE_ADDRESS = "B0:B2:1C:49:BF:62"
 SOIL_CHAR_UUID = "19B10011-E8F2-537E-4F6C-D104768A1214"
 PUMP_CHAR_UUID = "19B10012-E8F2-537E-4F6C-D104768A1214"
 # MQTT Settings
-BROKER_ADDRESS = os.getenv("BROKER_ADDRESS", "localhost")
-PORT           = int(os.getenv("PORT", 1883))
+BROKER_ADDRESS = "3.107.29.55"
+PORT           = 1883
 UP_TOPIC       = "sensors/soil"
 DOWN_TOPIC     = "command/pump"
 
@@ -111,11 +111,17 @@ def mqtt_pub(d: dict):
 # Uses async/await because BLE scanning is a time-consuming I/O operation
 # that should not block other tasks. (e.g., MQTT communication)
 async def find_device():
-    if not DEVICE_ADDRESS:
-        return None
-    # Scan and find the device by its MAC address.
-    device = await BleakScanner.find_device_by_address(DEVICE_ADDRESS, timeout=10.0)
-    return device
+# 1. まず既知のMACアドレスで探す（最も速く確実）
+    if DEVICE_ADDRESS:
+        dev = await BleakScanner.find_device_by_address(DEVICE_ADDRESS, timeout=6.0)
+        if dev:
+            return dev
+    # 2. MACで見つからなければ、名前で探す（MACアドレスが変動するRPA対策）
+    print("[BLE] Address not found, falling back to name scan...")
+    return await BleakScanner.find_device_by_filter(
+        lambda d, ad: (d.name is not None and DEVICE_NAME in d.name),
+        timeout=10.0
+    )
 
 # Called when Arduino sends a BLE notification with soil data.
 # Parses the data add publishes it to the MQTT broker.
@@ -162,30 +168,47 @@ async def ble_loop(stop_event: asyncio.Event):
                 def handle_disconnect(_client):
                     if not disconnected_future.done():
                         disconnected_future.set_result(True)
-                # Set a callback function that will be called when the BLE device disconnects.
-                client = BleakClient(address_or_ble_device, disconnected_callback=handle_disconnect)
-                await client.connect()
 
-                print("[BLE] connected:", client.address)
+                async with BleakClient(device, timeout=20.0, disconnected_callback=handle_disconnect) as client:
+                    if not client.is_connected:
+                        print("[BLE] connect failed, retry")
+                        await asyncio.sleep(3)
+                        continue
+
+                BLE_CLIENT = client
+                print("[BLE] connected:", getattr(client, "address", "?"))
+
+                # サービス解決を試みる（Peripheralの準備ができていない場合のエラーを早期に検知）
+                try:
+                    await client.get_services()
+                except Exception as e:
+                    print(f"[BLE] get_services failed: {e}. Retrying...")
+                    await asyncio.sleep(3)
+                    continue
 
                 print(f"[BLE] start notify {SOIL_CHAR_UUID}")
                 # Start receiving BLE notifications from the soil sensor data.
                 await client.start_notify(SOIL_CHAR_UUID, on_notify)
+                stop_task = asyncio.create_task(stop_event.wait())
                 # Wait until either the BLE device disconnects or stop event is triggered.
                 await asyncio.wait(
-                    [disconnected_future, stop_event.wait()],
+                    { disconnected_future, stop_task},
                     # `return_when`: defines when asyncio.wait should return.
                     # FIRST_COMPLETED: return as soon as any of the futures complete.
                     return_when=asyncio.FIRST_COMPLETED
                 )
                 try:
                     await client.stop_notify(SOIL_CHAR_UUID)
-                except Exception: pass
+                except Exception:
+                    pass
+            BLE_CLIENT = None
 
-            if stop_event.is_set(): break
+            if stop_event.is_set():
+                break
             await asyncio.sleep(2)  # backoff
         except Exception as e:
             print("[BLE] error:", e)
+            BLE_CLIENT = None
             await asyncio.sleep(3)
     print("[BLE] loop exit")
 
