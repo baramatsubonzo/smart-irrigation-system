@@ -1,7 +1,7 @@
-# Seonser-Driven Smart Irrigation System
+# Sensor-Driven Smart Irrigation System
 
 ## 1. Project Overview
-- This Project is a **3-tier IoT system** designed to replace **guesswork** with data-driven farming, allowing for remote irrigation only when plants are actually thirsty.
+- This project is a **3-tier IoT system** designed to replace **guesswork** with data-driven farming, allowing for remote irrigation only when plants are actually thirsty.
 - A soil moisture sensor detects dryness, triggering an email notification and enabling remote control of a water pump.
 - The primary goal is to build a proof-of-concept for a future remote strawberry farm, where precise water management is critical.
 
@@ -16,8 +16,15 @@ The system is built on a **3-tier architecture** to ensure scalability and separ
         - BLE data to MQTT messages for the cloud (Upstream)
         - MQTT commands to BLE writes for the Arduino (Downstream).
 * **Tier 3: Cloud (AWS EC2)**
-    - Hosts the MQTT broker (Mosquitto) for communication.
-    - ①Subscribes to sensor data, ②evaluates it against a threshold, and ③sends email alerts.
+    - ①Subscribes to sensor data, ②evaluates it against a threshold, ③sends email alerts ④control water pump.
+    - Hosts the `MQTT broker (Mosquitto)` for communication.
+        * **Collects** soil moisture data by subscribing to the `sensors/soil/#` MQTT topic.
+        * **Control pump commands** published to the `command/pump/#` MQTT topic (for logging purposes, actual control is handled by Tier 2).
+
+    * Runs the `iot_service.py` notification service, which:
+        * **Evaluates** the data against a threshold ([see code](https://github.com/baramatsubonzo/smart-irrigation-system/blob/master/tier3/iot_service.py#L71-L86)).
+        * **Notifies** the user via email if the soil is too dry ([see code](https://github.com/baramatsubonzo/smart-irrigation-system/blob/master/tier3/iot_service.py#L88-L114)).
+
 
 ## 3. Setup & Installation
 ### Tier 1: Arduino
