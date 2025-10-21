@@ -11,10 +11,12 @@ The system is built on a **3-tier architecture** to ensure scalability and separ
 * **Tier 1: Sensor & Actuator (Arduino Nano 33 IoT)**
     - Measures soil moisture and transmits the data via BLE.
     - Receives commands via BLE to control the water pump.
+    - ![Tier1 Diagram](./images/tier1_diagram.png)
 * **Tier 2: Gateway (Raspberry Pi)**
     - Gateway converts BLE to MQTT
         - BLE data to MQTT messages for the cloud (Upstream)
         - MQTT commands to BLE writes for the Arduino (Downstream).
+    - ![Tier2 Diagram](./images/tier2_diagram.png)
 * **Tier 3: Cloud (AWS EC2)**
     - ①Subscribes to sensor data, ②evaluates it against a threshold, ③sends email alerts ④control water pump.
     - Hosts the `MQTT broker (Mosquitto)` for communication.
@@ -117,3 +119,5 @@ For the circuit to function correctly, the following three points **must be conn
 - **Arduino's `GND` Pin**
 - **Battery's Negative (-)** Terminal
 - **Transistor's Emitter** (left leg)
+
+![Electrical Circuit](./images/electrical_circuit.jpg)
